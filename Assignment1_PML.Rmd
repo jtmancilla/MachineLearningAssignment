@@ -1,0 +1,160 @@
+---
+title: "Assignment1: Practical Machine Learning"
+output: html_document
+---
+
+## Machine Learning Exercise.
+
+### Executive Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to predict the manner in which they did the exercise.
+
+We going to analyze data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. This is the "classe" variable in the training set.
+
+### Data Processing
+
+##### Reading the Data
+
+We start loading the libraries that we going to use and reading the training and testing datasets.
+
+```{r}
+library(caret)
+library(randomForest)
+
+train <- read.csv("pml-training.csv",header = TRUE, na.strings = c("NA", ""))
+test <- read.csv("pml-testing.csv",header = TRUE, na.strings = c("NA", ""))
+
+```
+
+### Exploratory Data Analysis
+
+First look
+
+```{r, echo=TRUE}
+
+str(train)
+
+```
+
+Many columns in train and test data sets are mostly filled with missing values.
+
+Train dataset NA look.
+
+```{r, echo=TRUE}
+
+colSums(is.na(train))
+
+```
+
+Test dataset NA look.
+
+```{r, echo=TRUE}
+
+colSums(is.na(test))
+
+```
+
+
+We going to use only complete case columns.
+
+```{r, }
+
+trainNoNA <- train[,(colSums(is.na(train)) == 0)]
+testNoNA <- test[,(colSums(is.na(train))== 0)]
+
+```
+
+Now we eliminate unnecessary columns.
+
+```{r, }
+
+delColms <- grepl("X|user_name|timestamp|new_window", colnames(trainNoNA))
+trainFew <- trainNoNA[, !delColms]
+testFew <- testNoNA[,!delColms]
+
+```
+
+### Building our Model
+
+##### Create Data Partition
+
+We update train dataset into a small training dataset and a small validation dataset. 
+
+```{r,}
+
+inTrain = createDataPartition( trainFew$classe, p = 0.7, list = FALSE)
+
+smallTrain = trainFew[inTrain,]
+smallValid = trainFew[-inTrain,]
+
+```
+
+##### Correlation
+
+We want take a look about the correlation between predictors. We want remove highly correlated variables.
+
+
+```{r, echo=TRUE}
+
+M <- abs(cor(smallTrain[,-54]))
+diag(M) <- 0
+which(M > 0.8, arr.ind= T)
+
+```
+
+##### Principal Component Analysis
+
+We use Principal Component Analysis to pre-process and use predic function to apply to small train and small validation dataset.
+
+```{r, echo=TRUE}
+
+preProc <- preProcess(smallTrain[,-54], method = "pca", thresh = 0.95)
+trainPC <- predict(preProc, smallTrain[,-54])
+validTestPC <- predict(preProc,smallValid[,-54])
+
+
+```
+
+### Machine Learning Algorithm:  Random Forest
+
+Next, we use Random Forest to create a model fit. We apply cross validation method with trainControl() insted bootstrapping method.
+
+```{r, echo=FALSE}
+library(caret)
+modelFit <- train(smallTrain$classe ~., method = "rf", data=trainPC, trControl=trainControl(method="cv", number = 4), importance = TRUE)
+```
+
+
+##### Cross Validation
+
+We testing our model with cross validation
+
+```{r, echo=TRUE}
+
+validRf <- predict(modelFit, validTestPC)
+confus <- confusionMatrix(smallValid$classe, validRf)
+confus$table
+
+```
+
+##### Accuracy
+
+The estimated accuracy.
+
+```{r, echo=TRUE}
+accur <- postResample(smallValid$classe, validRf)
+accur[[1]]
+
+```
+
+### Results
+
+Final prediction
+
+```{r, echo=TRUE}
+testPC <- predict(preProc, testFew[, -54])
+pred_final <- predict(modelFit, testPC)
+pred_final
+
+```
+
